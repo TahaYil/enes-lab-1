@@ -1,0 +1,39 @@
+pipeline {
+  agent any
+  // Use a named Maven installation configured in Jenkins (Manage Jenkins → Global Tool Configuration)
+  tools {
+    maven 'maven-3.9.4' // change this to the exact name you configured
+  }
+
+  triggers {
+    pollSCM('H/5 * * * *')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build & Test') {
+      steps {
+        // Print Maven version available on the node
+        sh 'mvn -v || true'
+        sh 'mvn -B -DskipTests=false test'
+      }
+      post {
+        always {
+          junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
+          archiveArtifacts artifacts: 'target/*.jar, target/*.war', allowEmptyArchive: true
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo 'Pipeline succeeded.' }
+    failure { echo 'Pipeline failed.' }
+  }
+}
+

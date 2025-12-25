@@ -3,8 +3,8 @@ pipeline {
     // Use an official Maven image with JDK 21 so `mvn` is available in the environment.
     docker {
       image 'maven:3.9.4-jdk-21'
-      // Keep a local .m2 cache across runs (optional and requires Docker volume support in Jenkins)
-      args '-v $HOME/.m2:/root/.m2'
+      // Optionally add docker args here if your Jenkins environment supports a persistent m2 cache.
+      // args '-v /var/jenkins_home/.m2:/root/.m2'
     }
   }
 
@@ -23,7 +23,9 @@ pipeline {
 
     stage('Build & Test') {
       steps {
-        echo "Running mvn test inside container: $(mvn -v || true)"
+        // Print Maven version from inside the container (use shell so Groovy doesn't interpolate $)
+        sh 'mvn -v || true'
+        echo 'Running mvn test inside container'
         // Run Maven in batch mode; fail the step if tests or build fail
         sh 'mvn -B -DskipTests=false test'
       }
