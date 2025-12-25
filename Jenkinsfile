@@ -1,12 +1,5 @@
 pipeline {
-  agent {
-    // Use an official Maven image with JDK 21 so `mvn` is available in the environment.
-    docker {
-      image 'maven:3.9.4-jdk-21'
-      // Optionally add docker args here if your Jenkins environment supports a persistent m2 cache.
-      // args '-v /var/jenkins_home/.m2:/root/.m2'
-    }
-  }
+  agent any
 
   // Poll SCM every 5 minutes (adjust if you prefer webhooks)
   triggers {
@@ -23,11 +16,24 @@ pipeline {
 
     stage('Build & Test') {
       steps {
-        // Print Maven version from inside the container (use shell so Groovy doesn't interpolate $)
-        sh 'mvn -v || true'
-        echo 'Running mvn test inside container'
-        // Run Maven in batch mode; fail the step if tests or build fail
-        sh 'mvn -B -DskipTests=false test'
+        // Try to run mvn locally; if not present, fall back to running maven via docker run.
+        script {
+          sh '''
+            set -e
+            echo "Detecting build environment..."
+            if command -v mvn >/dev/null 2>&1; then
+              echo "Found local mvn:"; mvn -v || true
+              mvn -B -DskipTests=false test
+            elif command -v docker >/dev/null 2>&1; then
+              echo "No local mvn found; using dockerized Maven image"
+              # Use the workspace mount so container sees the repo. Use current user to avoid root-owned files in workspace.
+              docker run --rm -u $(id -u):$(id -g) -v "$PWD":/workspace -w /workspace maven:3.9.4-jdk-21 mvn -B -DskipTests=false test
+            else
+              echo "ERROR: Neither 'mvn' nor 'docker' are available on this agent. Please install Maven or enable Docker on the node." >&2
+              exit 127
+            fi
+          '''
+        }
       }
       post {
         always {
