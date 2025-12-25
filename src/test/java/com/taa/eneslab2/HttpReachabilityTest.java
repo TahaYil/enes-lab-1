@@ -10,7 +10,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 class HttpReachabilityTest {
-
+//kod değişikkiği
     @Test
     void exampleDotComIsReachable() throws Exception {
         HttpClient client = HttpClient.newBuilder()
