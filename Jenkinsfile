@@ -1,54 +1,22 @@
 pipeline {
-  // This pipeline expects to run on an agent that has Maven installed.
-  // Install Maven on the agent (instructions in README.md) and set the agent's label to 'maven'.
-  agent { label 'maven' }
-
-  // Optional: configure a named Maven tool in Jenkins (Manage Jenkins → Global Tool Configuration)
-  // This pipeline will try to use that tool; if it's not configured, it will fall back to `mvn` on PATH.
-
-  triggers {
-    pollSCM('H/5 * * * *')
-  }
+  agent any
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
-
     stage('Build & Test') {
       steps {
-        script {
-          // Try to use a configured Maven tool first; fallback to PATH
-          def mvnCmd = 'mvn'
-          try {
-            def mvnHome = tool name: 'maven-3.9.4', type: 'hudson.tasks.Maven'
-            mvnCmd = "${mvnHome}/bin/mvn"
-            echo "Using Maven tool at: ${mvnHome}"
-          } catch (err) {
-            echo "Maven tool 'maven-3.9.4' is not configured in Jenkins, falling back to 'mvn' on PATH"
-          }
-
-          // Show mvn version (best-effort)
-          sh "${mvnCmd} -v || true"
-
-          // Run tests
-          sh "${mvnCmd} -B -DskipTests=false test"
-        }
+        // make wrapper executable (idempotent)
+        sh 'chmod +x mvnw || true'
+        // use wrapper to run tests
+        sh './mvnw -B -DskipTests=false test'
       }
       post {
         always {
-          // Publish JUnit test results and archive artifacts. allowEmptyResults avoids failing if no reports exist.
-          junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
-          archiveArtifacts artifacts: 'target/*.jar, target/*.war', allowEmptyArchive: true
+          junit '**/target/surefire-reports/*.xml'
         }
       }
     }
-  }
-
-  post {
-    success { echo 'Pipeline succeeded.' }
-    failure { echo 'Pipeline failed.' }
   }
 }
