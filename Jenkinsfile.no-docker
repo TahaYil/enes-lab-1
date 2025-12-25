@@ -1,9 +1,8 @@
 pipeline {
   agent any
-  // Use a named Maven installation configured in Jenkins (Manage Jenkins → Global Tool Configuration)
-  tools {
-    maven 'maven-3.9.4' // change this to the exact name you configured
-  }
+
+  // Optional: configure a named Maven tool in Jenkins (Manage Jenkins → Global Tool Configuration)
+  // This pipeline will try to use that tool; if it's not configured, it will fall back to `mvn` on PATH.
 
   triggers {
     pollSCM('H/5 * * * *')
@@ -18,12 +17,27 @@ pipeline {
 
     stage('Build & Test') {
       steps {
-        // Print Maven version available on the node
-        sh 'mvn -v || true'
-        sh 'mvn -B -DskipTests=false test'
+        script {
+          // Try to use a configured Maven tool first; fallback to PATH
+          def mvnCmd = 'mvn'
+          try {
+            def mvnHome = tool name: 'maven-3.9.4', type: 'hudson.tasks.Maven'
+            mvnCmd = "${mvnHome}/bin/mvn"
+            echo "Using Maven tool at: ${mvnHome}"
+          } catch (err) {
+            echo "Maven tool 'maven-3.9.4' is not configured in Jenkins, falling back to 'mvn' on PATH"
+          }
+
+          // Show mvn version (best-effort)
+          sh "${mvnCmd} -v || true"
+
+          // Run tests
+          sh "${mvnCmd} -B -DskipTests=false test"
+        }
       }
       post {
         always {
+          // Publish JUnit test results and archive artifacts. allowEmptyResults avoids failing if no reports exist.
           junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
           archiveArtifacts artifacts: 'target/*.jar, target/*.war', allowEmptyArchive: true
         }
@@ -36,4 +50,3 @@ pipeline {
     failure { echo 'Pipeline failed.' }
   }
 }
-
