@@ -27,6 +27,7 @@ class HttpReachabilityTest {
 
         int status = response.statusCode();
         // Accept any 2xx as reachable
+        // değişiklil
         Assertions.assertTrue(status >= 200 && status < 300,
                 "Expected 2xx response from https://example.com but got: " + status);
     }
