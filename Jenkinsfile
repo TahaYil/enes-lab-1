@@ -1,7 +1,11 @@
 pipeline {
-  agent any
+  // This pipeline expects to run on an agent that has Maven installed.
+  // Install Maven on the agent (instructions in README.md) and set the agent's label to 'maven'.
+  agent { label 'maven' }
 
-  // Optional: poll SCM (adjust or remove if you prefer webhooks)
+  // Optional: configure a named Maven tool in Jenkins (Manage Jenkins → Global Tool Configuration)
+  // This pipeline will try to use that tool; if it's not configured, it will fall back to `mvn` on PATH.
+
   triggers {
     pollSCM('H/5 * * * *')
   }
@@ -9,7 +13,6 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        echo 'Checking out source...'
         checkout scm
       }
     }
@@ -17,37 +20,35 @@ pipeline {
     stage('Build & Test') {
       steps {
         script {
-          // Use a shell block to try local mvn first, then fall back to docker run.
-          sh '''
-            set -e
-            echo "Detecting build environment..."
-            if command -v mvn >/dev/null 2>&1; then
-              echo "Using local mvn:"; mvn -v || true
-              mvn -B -DskipTests=false test
-            elif command -v docker >/dev/null 2>&1; then
-              echo "No local mvn found; using dockerized Maven image"
-              # Run container as current user to avoid root-owned files in workspace
-              docker run --rm -u $(id -u):$(id -g) -v "$PWD":/workspace -w /workspace maven:3.9.6-eclipse-temurin-17 mvn -B -DskipTests=false test
-            else
-              echo "ERROR: Neither 'mvn' nor 'docker' are available on this agent. Please install Maven or enable Docker on the node." >&2
-              exit 127
-            fi
-          '''
+          // Try to use a configured Maven tool first; fallback to PATH
+          def mvnCmd = 'mvn'
+          try {
+            def mvnHome = tool name: 'maven-3.9.4', type: 'hudson.tasks.Maven'
+            mvnCmd = "${mvnHome}/bin/mvn"
+            echo "Using Maven tool at: ${mvnHome}"
+          } catch (err) {
+            echo "Maven tool 'maven-3.9.4' is not configured in Jenkins, falling back to 'mvn' on PATH"
+          }
+
+          // Show mvn version (best-effort)
+          sh "${mvnCmd} -v || true"
+
+          // Run tests
+          sh "${mvnCmd} -B -DskipTests=false test"
+        }
+      }
+      post {
+        always {
+          // Publish JUnit test results and archive artifacts. allowEmptyResults avoids failing if no reports exist.
+          junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
+          archiveArtifacts artifacts: 'target/*.jar, target/*.war', allowEmptyArchive: true
         }
       }
     }
   }
 
   post {
-    always {
-      // Publish JUnit test results; allowEmptyResults avoids failing the post step when no reports exist
-      junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
-    }
-    success {
-      echo 'Pipeline succeeded.'
-    }
-    failure {
-      echo 'Pipeline failed.'
-    }
+    success { echo 'Pipeline succeeded.' }
+    failure { echo 'Pipeline failed.' }
   }
 }
